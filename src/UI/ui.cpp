@@ -38,17 +38,24 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
             buttonGUI->set_text("Connecting...");
             buttonGUI->set_enabled(false);
 
-            if (SMB::Connect(ip, port, user, pass)) {
-                buttonGUI->set_text("Disconnect");
-                buttonGUI->set_enabled(true);
-                IPInput->set_enabled(false);
-                PortInput->set_enabled(false);
-                UserInput->set_enabled(false);
-                PasswordInput->set_enabled(false);
-            } else {
-                buttonGUI->set_text("Connect");
-                buttonGUI->set_enabled(true);
-            }
+            IPInput->set_enabled(false);
+            PortInput->set_enabled(false);
+            UserInput->set_enabled(false);
+            PasswordInput->set_enabled(false);
+
+            SMB::ConnectAsync(ip, port, user, pass, [buttonGUI, IPInput, PortInput, UserInput, PasswordInput](bool success) {
+                if (success) {
+                    buttonGUI->set_text("Disconnect");
+                } else {
+                    buttonGUI->set_text("Connect");
+                    buttonGUI->set_enabled(true);
+
+                    IPInput->set_enabled(true);
+                    PortInput->set_enabled(true);
+                    UserInput->set_enabled(true);
+                    PasswordInput->set_enabled(true);
+                }
+            });
         } else if (buttonGUI->get_text() == "Disconnect") {
             SMB::Disconnect();
             buttonGUI->set_text("Connect");

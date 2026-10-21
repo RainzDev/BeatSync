@@ -4,8 +4,10 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <string>
 #include <string_view>
+#include <thread>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -123,6 +125,14 @@ namespace SMB {
         socket_handle = sock;
         connected.store(true, std::memory_order_release);
         return true;
+    }
+
+    inline void ConnectAsync(std::string_view ip, int port, std::string_view user, std::string_view pass, std::function<void(bool)> onComplete = nullptr) {
+        std::thread([ip = std::string(ip), port, user = std::string(user), pass = std::string(pass), onComplete = std::move(onComplete)]() mutable {
+            const bool ok = Connect(ip, port, user, pass);
+            if (onComplete)
+                onComplete(ok);
+        }).detach();
     }
 
     inline void Disconnect() {
