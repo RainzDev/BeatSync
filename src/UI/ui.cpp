@@ -35,20 +35,27 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
             const std::string user = getConfig().UserInput.GetValue();
             const std::string pass = getConfig().PasswordInput.GetValue();
 
+            buttonGUI->set_text("Connecting...");
+            buttonGUI->set_enabled(false);
+
             if (SMB::Connect(ip, port, user, pass)) {
                 buttonGUI->set_text("Disconnect");
-                IPInput->enabled = false;
-                PortInput->enabled = false;
-                UserInput->enabled = false;
-                PasswordInput->enabled = false;
+                buttonGUI->set_enabled(true);
+                IPInput->set_enabled(false);
+                PortInput->set_enabled(false);
+                UserInput->set_enabled(false);
+                PasswordInput->set_enabled(false);
+            } else {
+                buttonGUI->set_text("Connect");
+                buttonGUI->set_enabled(true);
             }
         } else if (buttonGUI->get_text() == "Disconnect") {
             SMB::Disconnect();
             buttonGUI->set_text("Connect");
-            IPInput->enabled = true;
-            PortInput->enabled = true;
-            UserInput->enabled = true;
-            PasswordInput->enabled = true;
+            IPInput->set_enabled(true);
+            PortInput->set_enabled(true);
+            UserInput->set_enabled(true);
+            PasswordInput->set_enabled(true);
         }
     });
 }
