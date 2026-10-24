@@ -6,6 +6,8 @@
 #include "bsml/shared/BSML.hpp"
 #include "UI/ui.hpp"
 
+#include "config.hpp"
+
 // Store the mod ID and version, so it can be sent to the modloader at startup
 static modloader::ModInfo modInfo{MOD_ID, VERSION, 0};
 
@@ -19,6 +21,7 @@ extern "C" __attribute__((visibility("default"))) void setup(CModInfo* info) noe
     // are stored in a dedicated file
     // Paper::Logger::RegisterFileContextId(MOD_ID);
 
+    getConfig().Init(modInfo);
     logger.info("Completed setup!");
 }
 

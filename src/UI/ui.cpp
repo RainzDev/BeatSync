@@ -22,6 +22,7 @@ void PullBeatmapsButton(UnityEngine::UI::Button* button) {
 
     if (button) {
         button->set_interactable(false);
+        BSML::Lite::SetButtonText(button, "Pulling...");
     }
 
     std::thread([button]() {
@@ -47,6 +48,7 @@ void PullBeatmapsButton(UnityEngine::UI::Button* button) {
             BSML::MainThreadScheduler::Schedule([button]() {
                 if (button) {
                     button->set_interactable(true);
+                    BSML::Lite::SetButtonText(button, "Pull Beatmaps");
                 }
 
                 SongCore::SongLoader::RuntimeSongLoader::get_instance()->RefreshSongs(false);
@@ -57,6 +59,7 @@ void PullBeatmapsButton(UnityEngine::UI::Button* button) {
             BSML::MainThreadScheduler::Schedule([button]() {
                 if (button) {
                     button->set_interactable(true);
+                    BSML::Lite::SetButtonText(button, "Pull Beatmaps");
                 }
             });
 
