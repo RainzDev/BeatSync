@@ -10,32 +10,59 @@
 
 #include <cstdlib>
 
+static bool g_isPullingBeatmaps = false;
+static UnityEngine::UI::Button* g_pullBeatmapsButton = nullptr;
+
 void PullBeatmapsButton(UnityEngine::UI::Button* button) {
+    if (g_isPullingBeatmaps) {
+        return;
+    }
+
+    g_isPullingBeatmaps = true;
+
     if (button) {
         button->set_interactable(false);
     }
 
-    std::future<WebUtils::JsonResponse> responseFuture = CreateRequest("/api/beatmaps/json");
+    std::thread([button]() {
+        try {
+            auto responseFuture = CreateRequest("/api/beatmaps/json");
+            WebUtils::JsonResponse json = responseFuture.get();
 
-    WebUtils::JsonResponse json = responseFuture.get();
+            const auto& source = json.GetParsedData()["version"]["source"].GetString();
+            const auto& customLevels = json.GetParsedData()["version"]["customLevels"];
 
-    for (auto& beatmap : json.GetParsedData()["version"]["customLevels"].GetArray()) {
-        auto bytes = DownloadZipBytes(std::string("/api/beatmaps/download/") + beatmap["name"].GetString());
+            for (auto& beatmap : customLevels.GetArray()) {
+                auto bytes = DownloadZipBytes(std::string("/api/beatmaps/download/") + beatmap["name"].GetString());
 
-        logger.info("Downloaded {} bytes", bytes.size());
+                logger.info("Downloaded {} bytes", bytes.size());
 
-        if (json.GetParsedData()["version"]["source"].GetString() == std::string("CustomLevels")) {
-            ExtractZip(bytes, std::filesystem::path("/sdcard/ModData/com.beatgames.beatsaber/Mods/SongCore/CustomLevels"));
-        } else if (json.GetParsedData()["version"]["source"].GetString() == std::string("CustomWIPLevels")) {
-            ExtractZip(bytes, std::filesystem::path("/sdcard/ModData/com.beatgames.beatsaber/Mods/SongCore/CustomWIPLevels"));
+                if (std::string(source) == std::string("CustomLevels")) {
+                    ExtractZip(bytes, std::filesystem::path("/sdcard/ModData/com.beatgames.beatsaber/Mods/SongCore/CustomLevels"), beatmap["name"].GetString());
+                } else if (std::string(source) == std::string("CustomWIPLevels")) {
+                    ExtractZip(bytes, std::filesystem::path("/sdcard/ModData/com.beatgames.beatsaber/Mods/SongCore/CustomWIPLevels"), beatmap["name"].GetString());
+                }
+            }
+
+            BSML::MainThreadScheduler::Schedule([button]() {
+                if (button) {
+                    button->set_interactable(true);
+                }
+
+                SongCore::SongLoader::RuntimeSongLoader::get_instance()->RefreshSongs(false);
+            });
+
+            g_isPullingBeatmaps = false;
+        } catch (...) {
+            BSML::MainThreadScheduler::Schedule([button]() {
+                if (button) {
+                    button->set_interactable(true);
+                }
+            });
+
+            g_isPullingBeatmaps = false;
         }
-    }
-
-    SongCore::SongLoader::RuntimeSongLoader::get_instance()->RefreshSongs(false);
-
-    if (button) {
-        button->set_interactable(true);
-    }
+    }).detach();
 }
 
 
@@ -54,8 +81,11 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
         getConfig().Port.SetValue(value);
     });
 
-    UnityEngine::UI::Button* pullButton = nullptr;
-    pullButton = BSML::Lite::CreateUIButton(container, "Pull Beatmaps", [&pullButton]() {
-        PullBeatmapsButton(pullButton);
+    g_pullBeatmapsButton = BSML::Lite::CreateUIButton(container, "Pull Beatmaps", []() {
+        if (g_isPullingBeatmaps) {
+            return;
+        }
+
+        PullBeatmapsButton(g_pullBeatmapsButton);
     });
 }

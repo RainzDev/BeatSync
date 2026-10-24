@@ -3,13 +3,9 @@
 #include <filesystem>
 #include "miniz.h"
 
-bool ExtractZip(const std::vector<uint8_t>& zipBytes, const std::filesystem::path& outputDir) {
-    std::filesystem::create_directories(outputDir);
-
-    std::string tempZip = (outputDir / "download.zip").string();
-    std::ofstream zipFile(tempZip, std::ios::binary);
-    zipFile.write(reinterpret_cast<const char*>(zipBytes.data()), zipBytes.size());
-    zipFile.close();
+bool ExtractZip(const std::vector<uint8_t>& zipBytes, const std::filesystem::path& outputDir, const std::string& folderName) {
+    const std::filesystem::path targetDir = outputDir / folderName;
+    std::filesystem::create_directories(targetDir);
 
     mz_zip_archive archive{};
     if (!mz_zip_reader_init_mem(&archive, zipBytes.data(), zipBytes.size(), 0)) {
@@ -23,7 +19,16 @@ bool ExtractZip(const std::vector<uint8_t>& zipBytes, const std::filesystem::pat
             continue;
         }
 
-        std::filesystem::path outPath = outputDir / stat.m_filename;
+        std::filesystem::path relativePath = stat.m_filename;
+        if (relativePath.is_absolute()) {
+            relativePath = relativePath.lexically_relative(relativePath.root_path());
+        }
+
+        if (relativePath.empty()) {
+            continue;
+        }
+
+        std::filesystem::path outPath = targetDir / relativePath;
 
         if (std::string(stat.m_filename).ends_with("/")) {
             std::filesystem::create_directories(outPath);
