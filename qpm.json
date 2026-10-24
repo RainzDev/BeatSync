@@ -95,6 +95,21 @@
       "id": "reflectcpp",
       "versionRange": "^0.25.0",
       "additionalData": {}
+    },
+    {
+      "id": "web-utils",
+      "versionRange": "^0.6.9",
+      "additionalData": {}
+    },
+    {
+      "id": "songcore",
+      "versionRange": "^1.1.26",
+      "additionalData": {}
+    },
+    {
+      "id": "rapidjson",
+      "versionRange": "^0.1.20250205132808",
+      "additionalData": {}
     }
   ]
 }

@@ -1,13 +1,43 @@
 #include "bsml/shared/BSML.hpp"
-#include "TMPro/TextMeshProUGUI.hpp"
+#include "songcore/shared/SongLoader/RuntimeSongLoader.hpp"
 #include "../config.hpp"
-#include "../utils/QuestConnection.hpp"
+#include "../utils/requests.hpp"
+#include "../utils/zip/extract.hpp"
+
+#include <filesystem>
+
+#include "main.hpp"
 
 #include <cstdlib>
 
-namespace {
-    UnityEngine::UI::Button* g_connectButton = nullptr;
+void PullBeatmapsButton(UnityEngine::UI::Button* button) {
+    if (button) {
+        button->set_interactable(false);
+    }
+
+    std::future<WebUtils::JsonResponse> responseFuture = CreateRequest("/api/beatmaps/json");
+
+    WebUtils::JsonResponse json = responseFuture.get();
+
+    for (auto& beatmap : json.GetParsedData()["version"]["customLevels"].GetArray()) {
+        auto bytes = DownloadZipBytes(std::string("/api/beatmaps/download/") + beatmap["name"].GetString());
+
+        logger.info("Downloaded {} bytes", bytes.size());
+
+        if (json.GetParsedData()["version"]["source"].GetString() == std::string("CustomLevels")) {
+            ExtractZip(bytes, std::filesystem::path("/sdcard/ModData/com.beatgames.beatsaber/Mods/SongCore/CustomLevels"));
+        } else if (json.GetParsedData()["version"]["source"].GetString() == std::string("CustomWIPLevels")) {
+            ExtractZip(bytes, std::filesystem::path("/sdcard/ModData/com.beatgames.beatsaber/Mods/SongCore/CustomWIPLevels"));
+        }
+    }
+
+    SongCore::SongLoader::RuntimeSongLoader::get_instance()->RefreshSongs(false);
+
+    if (button) {
+        button->set_interactable(true);
+    }
 }
+
 
 void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling) {
     // Only create the elements once per menu
@@ -16,32 +46,16 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
 
     auto container = BSML::Lite::CreateScrollableSettingsContainer(self);
 
-    g_connectButton = BSML::Lite::CreateUIButton(container, "Connect", []() {
-        if (g_connectButton == nullptr)
-            return;
+    BSML::Lite::CreateStringSetting(container, "IP Address", getConfig().IPAddress.GetValue(), [](std::string value) {
+        getConfig().IPAddress.SetValue(value);
+    });
 
-        auto buttonGUI = g_connectButton->GetComponentInChildren<TMPro::TextMeshProUGUI*>();
-        if (buttonGUI == nullptr)
-            return;
+    BSML::Lite::CreateStringSetting(container, "Port", getConfig().Port.GetValue(), [](std::string value) {
+        getConfig().Port.SetValue(value);
+    });
 
-        if (buttonGUI->get_text() == "Connect") {
-            buttonGUI->set_text("Listening...");
-            buttonGUI->set_enabled(false);
-
-            QuestConnection::StartQuestHandshakeListener([buttonGUI](bool success) {
-                if (success) {
-                    buttonGUI->set_text("Disconnect");
-                    buttonGUI->set_enabled(true);
-                } else {
-                    buttonGUI->set_text("Connect");
-                    buttonGUI->set_enabled(true);
-                }
-            });
-        } else if (buttonGUI->get_text() == "Disconnect") {
-            QuestConnection::Disconnect();
-            QuestConnection::StopQuestHandshakeListener();
-            buttonGUI->set_text("Connect");
-            buttonGUI->set_enabled(true);
-        }
+    UnityEngine::UI::Button* pullButton = nullptr;
+    pullButton = BSML::Lite::CreateUIButton(container, "Pull Beatmaps", [&pullButton]() {
+        PullBeatmapsButton(pullButton);
     });
 }

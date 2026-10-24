@@ -43,13 +43,16 @@ set(INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 recurse_files(cpp_file_list ${SOURCE_DIR}/*.cpp)
 recurse_files(c_file_list ${SOURCE_DIR}/*.c)
 
+# Add the bundled Miniz ZIP implementation used by the extractor
+set(MINIZ_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/include/miniz.c)
+
 # Add files used in beatsaber-hook's hooking library
 recurse_files(inline_hook_c ${EXTERN_DIR}/includes/beatsaber-hook/shared/inline-hook/*.c)
 recurse_files(inline_hook_cpp ${EXTERN_DIR}/includes/beatsaber-hook/shared/inline-hook/*.cpp)
 
 # Add all source files to compilation
 add_library(
-    ${COMPILE_ID} SHARED ${cpp_file_list} ${c_file_list} ${inline_hook_cpp} ${inline_hook_c}
+    ${COMPILE_ID} SHARED ${cpp_file_list} ${c_file_list} ${MINIZ_SOURCE} ${inline_hook_cpp} ${inline_hook_c}
 )
 
 # Add include directories to compilation
