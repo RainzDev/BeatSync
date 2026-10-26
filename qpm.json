@@ -40,7 +40,9 @@
       "./extern/libs",
       "."
     ],
-    "qmodIncludeFiles": [],
+    "qmodIncludeFiles": [
+      "./src/assets/logo.png"
+    ],
     "qmodOutput": "./BeatSync.qmod"
   },
   "dependencies": [

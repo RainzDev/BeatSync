@@ -5,6 +5,7 @@
 #include "../config.hpp"
 #include "../utils/requests.hpp"
 #include "../utils/zip/extract.hpp"
+#include "../utils/Sprite/convertsprite.hpp"
 
 #include "playlistcore/shared/PlaylistCore.hpp"
 
@@ -50,7 +51,7 @@ static void AddRemapperLevelsToPlaylistWithProgress() {
     }
 
     if (!playlist) {
-        auto createdPlaylist = PlaylistCore::AddPlaylist("Remapper Output", "BeatSync Mod");
+        auto createdPlaylist = PlaylistCore::AddPlaylist("Remapper Output", "BeatSync Mod", ConvertImageFileToSprite("/sdcard/ModData/com.beatgames.beatsaber/Mods/BeatSync/logo.png"));
         playlistPath = createdPlaylist.first;
         playlist = createdPlaylist.second;
 

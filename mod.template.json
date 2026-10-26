@@ -11,5 +11,10 @@
   "modFiles": [],
   "lateModFiles": [],
   "libraryFiles": [],
-  "fileCopies": []
+  "fileCopies": [
+    {
+      "name": "src/assets/logo.png",
+      "destination": "/sdcard/ModData/com.beatgames.beatsaber/Mods/BeatSync/logo.png"
+    }
+  ]
 }

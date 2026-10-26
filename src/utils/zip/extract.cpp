@@ -7,15 +7,36 @@ bool ExtractZip(const std::vector<uint8_t>& zipBytes, const std::filesystem::pat
     const std::filesystem::path targetDir = outputDir / folderName;
     std::filesystem::create_directories(targetDir);
 
+    const std::filesystem::path tempZipPath = outputDir / (folderName + ".tmpdownload.zip");
+    {
+        std::ofstream zipOut(tempZipPath, std::ios::binary | std::ios::trunc);
+        if (!zipOut.is_open()) {
+            return false;
+        }
+
+        zipOut.write(reinterpret_cast<const char*>(zipBytes.data()), static_cast<std::streamsize>(zipBytes.size()));
+        if (!zipOut.good()) {
+            zipOut.close();
+            std::error_code removeErr;
+            std::filesystem::remove(tempZipPath, removeErr);
+            return false;
+        }
+    }
+
     mz_zip_archive archive{};
-    if (!mz_zip_reader_init_mem(&archive, zipBytes.data(), zipBytes.size(), 0)) {
+    if (!mz_zip_reader_init_file(&archive, tempZipPath.string().c_str(), 0)) {
+        std::error_code removeErr;
+        std::filesystem::remove(tempZipPath, removeErr);
         return false;
     }
+
+    bool allExtracted = true;
 
     const auto count = mz_zip_reader_get_num_files(&archive);
     for (mz_uint i = 0; i < count; ++i) {
         mz_zip_archive_file_stat stat{};
         if (!mz_zip_reader_file_stat(&archive, i, &stat)) {
+            allExtracted = false;
             continue;
         }
 
@@ -37,20 +58,20 @@ bool ExtractZip(const std::vector<uint8_t>& zipBytes, const std::filesystem::pat
 
         std::filesystem::create_directories(outPath.parent_path());
 
-        std::vector<uint8_t> buffer(stat.m_uncomp_size);
-        if (!mz_zip_reader_extract_to_mem(
+        if (!mz_zip_reader_extract_to_file(
                 &archive,
                 i,
-                buffer.data(),
-                buffer.size(),
+                outPath.string().c_str(),
                 0)) {
+            allExtracted = false;
             continue;
         }
-
-        std::ofstream out(outPath, std::ios::binary);
-        out.write(reinterpret_cast<const char*>(buffer.data()), buffer.size());
     }
 
     mz_zip_reader_end(&archive);
-    return true;
+
+    std::error_code removeErr;
+    std::filesystem::remove(tempZipPath, removeErr);
+
+    return allExtracted;
 }
