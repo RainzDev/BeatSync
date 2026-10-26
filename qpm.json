@@ -4,12 +4,12 @@
   "sharedDir": "shared",
   "dependenciesDir": "extern",
   "info": {
-    "name": "BeatmapPorter",
-    "id": "beatmapporter",
+    "name": "BeatSync",
+    "id": "beatsync",
     "version": "0.1.0",
     "url": null,
     "additionalData": {
-      "overrideSoName": "libbeatmapporter.so",
+      "overrideSoName": "libbeatsync.so",
       "cmake": true
     }
   },
@@ -41,7 +41,7 @@
       "."
     ],
     "qmodIncludeFiles": [],
-    "qmodOutput": "./BeatmapPorter.qmod"
+    "qmodOutput": "./BeatSync.qmod"
   },
   "dependencies": [
     {
@@ -83,7 +83,7 @@
     },
     {
       "id": "config-utils",
-      "versionRange": "^3.0.0",
+      "versionRange": "^2.0.3",
       "additionalData": {}
     },
     {
@@ -109,6 +109,11 @@
     {
       "id": "rapidjson",
       "versionRange": "^0.1.20250205132808",
+      "additionalData": {}
+    },
+    {
+      "id": "playlistcore",
+      "versionRange": "^1.5.5",
       "additionalData": {}
     }
   ]

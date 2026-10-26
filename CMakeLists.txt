@@ -55,6 +55,8 @@ add_library(
     ${COMPILE_ID} SHARED ${cpp_file_list} ${c_file_list} ${MINIZ_SOURCE} ${inline_hook_cpp} ${inline_hook_c}
 )
 
+set_target_properties(${COMPILE_ID} PROPERTIES OUTPUT_NAME "beatsync")
+
 # Add include directories to compilation
 target_include_directories(${COMPILE_ID} PRIVATE ${INCLUDE_DIR})
 
@@ -68,7 +70,7 @@ add_custom_command(
     TARGET ${COMPILE_ID}
     POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "debug"
-    COMMAND ${CMAKE_COMMAND} -E rename "lib${COMPILE_ID}.so" "debug/lib${COMPILE_ID}.so"
-    COMMAND ${CMAKE_STRIP} -d --strip-all "debug/lib${COMPILE_ID}.so" -o "lib${COMPILE_ID}.so"
+    COMMAND ${CMAKE_COMMAND} -E rename "libbeatsync.so" "debug/libbeatsync.so"
+    COMMAND ${CMAKE_STRIP} -d --strip-all "debug/libbeatsync.so" -o "libbeatsync.so"
     COMMENT "Create stripped and debug libraries"
 )

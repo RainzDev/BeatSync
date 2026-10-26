@@ -1,7 +1,7 @@
 name: Publish
 
 env:
-  module_id: beatmapporter
+  module_id: beatsync
 
 on:
   workflow_dispatch:

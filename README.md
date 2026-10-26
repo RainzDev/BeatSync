@@ -1,4 +1,4 @@
-# BeatmapPorter
+# BeatSync
 
 Ports PC beatmaps over to Quest
 

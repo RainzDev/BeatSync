@@ -29,6 +29,6 @@ extern "C" __attribute__((visibility("default"))) void setup(CModInfo* info) noe
 // Often used to install hooks and use the APIs of other mods or libraries
 extern "C" __attribute__((visibility("default"))) void late_load() noexcept {
     BSML::Init();
-    BSML::Register::RegisterSettingsMenu("BeatmapPorter", DidActivate, false);
+    BSML::Register::RegisterSettingsMenu("BeatSync", DidActivate, false);
     logger.info("Completed load!");
 }
