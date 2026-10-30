@@ -21,6 +21,17 @@ static bool g_isPullingBeatmaps = false;
 static UnityEngine::UI::Button* g_pullBeatmapsButton = nullptr;
 static BSML::SliderSetting* g_pullProgressBar = nullptr;
 
+static void SetPullButtonState(bool isPulling) {
+    BSML::MainThreadScheduler::Schedule([isPulling]() {
+        if (!g_pullBeatmapsButton) {
+            return;
+        }
+
+        g_pullBeatmapsButton->set_interactable(!isPulling);
+        BSML::Lite::SetButtonText(g_pullBeatmapsButton, isPulling ? "Pulling..." : "Pull Beatmaps");
+    });
+}
+
 static bool IsRemapperFolderLevel(SongCore::SongLoader::CustomBeatmapLevel* level) {
     if (!level) {
         return false;
@@ -98,13 +109,15 @@ void PullBeatmapsButton(UnityEngine::UI::Button* button) {
     if (button) {
         button->set_interactable(false);
         BSML::Lite::SetButtonText(button, "Pulling...");
+    } else {
+        SetPullButtonState(true);
     }
 
     if (g_pullProgressBar) {
         g_pullProgressBar->set_Value(0.0f);
     }
 
-    std::thread([button]() {
+    std::thread([]() {
         try {
             auto responseFuture = CreateRequest("/api/beatmaps/json");
             WebUtils::JsonResponse json = responseFuture.get();
@@ -153,12 +166,9 @@ void PullBeatmapsButton(UnityEngine::UI::Button* button) {
 
             SetProgressValue(90.0f);
 
-            BSML::MainThreadScheduler::Schedule([button, shouldSyncRemapperPlaylist]() {
-                if (button) {
-                    button->set_interactable(true);
-                    BSML::Lite::SetButtonText(button, "Pull Beatmaps");
-                }
+            SetPullButtonState(false);
 
+            BSML::MainThreadScheduler::Schedule([shouldSyncRemapperPlaylist]() {
                 if (shouldSyncRemapperPlaylist) {
                     AddRemapperLevelsToPlaylistWithProgress();
                 } else {
@@ -167,13 +177,22 @@ void PullBeatmapsButton(UnityEngine::UI::Button* button) {
             });
 
             g_isPullingBeatmaps = false;
-        } catch (...) {
-            BSML::MainThreadScheduler::Schedule([button]() {
-                if (button) {
-                    button->set_interactable(true);
-                    BSML::Lite::SetButtonText(button, "Pull Beatmaps");
-                }
+        } catch (const std::exception& ex) {
+            logger.error("Pull beatmaps failed: {}", ex.what());
+            SetPullButtonState(false);
 
+            BSML::MainThreadScheduler::Schedule([]() {
+                if (g_pullProgressBar) {
+                    g_pullProgressBar->set_Value(0.0f);
+                }
+            });
+
+            g_isPullingBeatmaps = false;
+        } catch (...) {
+            logger.error("Pull beatmaps failed with unknown exception");
+            SetPullButtonState(false);
+
+            BSML::MainThreadScheduler::Schedule([]() {
                 if (g_pullProgressBar) {
                     g_pullProgressBar->set_Value(0.0f);
                 }
@@ -182,6 +201,14 @@ void PullBeatmapsButton(UnityEngine::UI::Button* button) {
             g_isPullingBeatmaps = false;
         }
     }).detach();
+}
+
+void TriggerAutomaticPullOnLateLoad() {
+    if (!getConfig().AutomaticPull.GetValue()) {
+        return;
+    }
+
+    PullBeatmapsButton(nullptr);
 }
 
 
@@ -225,6 +252,11 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
 
         PullBeatmapsButton(g_pullBeatmapsButton);
     });
+
+    if (g_isPullingBeatmaps) {
+        g_pullBeatmapsButton->set_interactable(false);
+        BSML::Lite::SetButtonText(g_pullBeatmapsButton, "Pulling...");
+    }
 
     BSML::Lite::CreateToggle(container, "Automatic Pull", getConfig().AutomaticPull.GetValue(), [](bool value) {
         getConfig().AutomaticPull.SetValue(value);
