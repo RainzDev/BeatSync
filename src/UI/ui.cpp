@@ -132,8 +132,8 @@ void PullBeatmapsButton(UnityEngine::UI::Button* button) {
                     }
                     ExtractZip(bytes, SongCore::API::Loading::GetPreferredCustomWIPLevelPath(), beatmap["name"].GetString());
                 } else if (sourceStr == "RemapperOutput") {
-                    if (std::filesystem::exists(SongCore::API::Loading::GetPreferredCustomWIPLevelPath() / beatmap["name"].GetString())) {
-                        std::filesystem::remove_all(SongCore::API::Loading::GetPreferredCustomWIPLevelPath() / beatmap["name"].GetString());
+                    if (std::filesystem::exists(SongCore::API::Loading::GetPreferredCustomWIPLevelPath() / (beatmap["name"].GetString() + std::string("_Remapper")))) {
+                        std::filesystem::remove_all(SongCore::API::Loading::GetPreferredCustomWIPLevelPath() / (beatmap["name"].GetString() + std::string("_Remapper")));
                     }
                     ExtractZip(bytes, SongCore::API::Loading::GetPreferredCustomWIPLevelPath(), beatmap["name"].GetString() + std::string("_Remapper"));
                 }
