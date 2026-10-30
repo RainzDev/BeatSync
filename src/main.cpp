@@ -30,5 +30,6 @@ extern "C" __attribute__((visibility("default"))) void setup(CModInfo* info) noe
 extern "C" __attribute__((visibility("default"))) void late_load() noexcept {
     BSML::Init();
     BSML::Register::RegisterSettingsMenu("BeatSync", DidActivate, false);
+    BSML::Register::RegisterMainMenu("BeatSync Settings", "BeatSync", "Opens BeatSync Settings", DidActivate);
     logger.info("Completed load!");
 }

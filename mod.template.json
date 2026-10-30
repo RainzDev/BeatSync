@@ -7,7 +7,13 @@
   "packageId": "com.beatgames.beatsaber",
   "packageVersion": "1.40.8_7379",
   "description": "Ports PC beatmaps over to Quest",
-  "dependencies": [],
+  "dependencies": [
+    {
+      "version": "*",
+      "id": "playlistmanager",
+      "downloadIfMissing": "https://github.com/Metalit/PlaylistManager/releases/download/v1.4.1/PlaylistManager.qmod"
+    }
+  ],
   "modFiles": [],
   "lateModFiles": [],
   "libraryFiles": [],

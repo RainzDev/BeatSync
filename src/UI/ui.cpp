@@ -216,4 +216,8 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
 
         PullBeatmapsButton(g_pullBeatmapsButton);
     });
+
+    BSML::Lite::CreateToggle(container, "Automatic Pull", getConfig().AutomaticPull.GetValue(), [](bool value) {
+        getConfig().AutomaticPull.SetValue(value);
+    });
 }
