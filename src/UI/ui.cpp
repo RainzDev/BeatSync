@@ -10,16 +10,89 @@
 #include "playlistcore/shared/PlaylistCore.hpp"
 
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <thread>
 
 #include "main.hpp"
+
+#include "../assets/logo_bytes.inc"
 
 #include <cstdlib>
 
 static bool g_isPullingBeatmaps = false;
 static UnityEngine::UI::Button* g_pullBeatmapsButton = nullptr;
 static BSML::SliderSetting* g_pullProgressBar = nullptr;
+
+static std::filesystem::path GetPrimaryLogoPath() {
+    return std::filesystem::path("/sdcard/ModData/com.beatgames.beatsaber/Mods") / MOD_ID / "logo.png";
+}
+
+static std::filesystem::path GetLegacyLogoPath() {
+    return "/sdcard/ModData/com.beatgames.beatsaber/Mods/BeatSync/logo.png";
+}
+
+void EnsureLogoPathOnLateLoad() {
+    try {
+        const std::filesystem::path primaryLogoPath = GetPrimaryLogoPath();
+        std::error_code ec;
+
+        std::filesystem::create_directories(primaryLogoPath.parent_path(), ec);
+        if (ec) {
+            logger.warn("Failed creating logo directory '{}': {}", primaryLogoPath.parent_path().string(), ec.message());
+            ec.clear();
+        }
+
+        if (std::filesystem::exists(primaryLogoPath)) {
+            auto* existingSprite = ConvertImageFileToSprite(primaryLogoPath.string());
+            if (existingSprite) {
+                return;
+            }
+
+            logger.warn("Existing logo at '{}' is invalid, rebuilding it", primaryLogoPath.string());
+            std::filesystem::remove(primaryLogoPath, ec);
+            if (ec) {
+                logger.warn("Failed removing invalid logo '{}': {}", primaryLogoPath.string(), ec.message());
+                ec.clear();
+            }
+        }
+
+        const std::filesystem::path legacyLogoPath = GetLegacyLogoPath();
+        if (std::filesystem::exists(legacyLogoPath)) {
+            std::filesystem::copy_file(legacyLogoPath, primaryLogoPath, std::filesystem::copy_options::overwrite_existing, ec);
+            if (ec) {
+                logger.warn("Failed copying legacy logo '{}' to '{}': {}", legacyLogoPath.string(), primaryLogoPath.string(), ec.message());
+            } else {
+                if (ConvertImageFileToSprite(primaryLogoPath.string())) {
+                    logger.info("Copied logo to '{}' from legacy BeatSync path", primaryLogoPath.string());
+                    return;
+                }
+
+                logger.warn("Copied legacy logo to '{}' but sprite decode failed, writing fallback", primaryLogoPath.string());
+            }
+        }
+
+        std::ofstream out(primaryLogoPath, std::ios::binary | std::ios::trunc);
+        if (!out.is_open()) {
+            logger.warn("Failed creating fallback logo at '{}'", primaryLogoPath.string());
+            return;
+        }
+
+        out.write(reinterpret_cast<const char*>(src_assets_logo_png), static_cast<std::streamsize>(src_assets_logo_png_len));
+        out.close();
+
+        if (!out) {
+            logger.warn("Failed writing fallback logo at '{}'", primaryLogoPath.string());
+            return;
+        }
+
+        logger.info("Created fallback logo at '{}'", primaryLogoPath.string());
+    } catch (const std::exception& ex) {
+        logger.error("EnsureLogoPathOnLateLoad failed: {}", ex.what());
+    } catch (...) {
+        logger.error("EnsureLogoPathOnLateLoad failed with unknown exception");
+    }
+}
 
 static void SetPullButtonState(bool isPulling) {
     BSML::MainThreadScheduler::Schedule([isPulling]() {
@@ -37,8 +110,20 @@ static bool IsRemapperFolderLevel(SongCore::SongLoader::CustomBeatmapLevel* leve
         return false;
     }
 
-    const std::filesystem::path levelPath(level->get_customLevelPath());
-    const std::string folderName = levelPath.filename().string();
+    const auto customLevelPath = level->get_customLevelPath();
+    if (customLevelPath.empty()) {
+        return false;
+    }
+
+    std::string folderName;
+    try {
+        const std::filesystem::path levelPath(customLevelPath);
+        folderName = levelPath.filename().string();
+    } catch (const std::exception& ex) {
+        logger.warn("Skipping level with invalid custom path while syncing remapper playlist: {}", ex.what());
+        return false;
+    }
+
     static constexpr std::string_view suffix = "_Remapper";
 
     return folderName.size() >= suffix.size() &&
@@ -62,7 +147,13 @@ static void AddRemapperLevelsToPlaylistWithProgress() {
     }
 
     if (!playlist) {
-        auto createdPlaylist = PlaylistCore::AddPlaylist("Remapper Output", "BeatSync Mod", ConvertImageFileToSprite("/sdcard/ModData/com.beatgames.beatsaber/Mods/BeatSync/logo.png"));
+        const std::string modLogoPath = GetPrimaryLogoPath().string();
+        UnityEngine::Sprite* playlistCover = ConvertImageFileToSprite(modLogoPath);
+        if (!playlistCover) {
+            playlistCover = ConvertImageFileToSprite(GetLegacyLogoPath().string());
+        }
+
+        auto createdPlaylist = PlaylistCore::AddPlaylist("Remapper Output", "BeatSync Mod", playlistCover);
         playlistPath = createdPlaylist.first;
         playlist = createdPlaylist.second;
 
@@ -93,7 +184,20 @@ static void AddRemapperLevelsToPlaylistWithProgress() {
     }
 
     for (size_t i = 0; i < remapperLevels.size(); ++i) {
-        PlaylistCore::AddSongToPlaylist(playlist, remapperLevels[i]);
+        auto* remapperLevel = remapperLevels[i];
+        if (!remapperLevel) {
+            logger.warn("Skipping null remapper level while syncing playlist");
+            continue;
+        }
+
+        try {
+            PlaylistCore::AddSongToPlaylist(playlist, remapperLevel);
+        } catch (const std::exception& ex) {
+            logger.error("Failed adding remapper level to playlist: {}", ex.what());
+        } catch (...) {
+            logger.error("Failed adding remapper level to playlist with unknown exception");
+        }
+
         const float progress = 90.0f + (10.0f * static_cast<float>(i + 1) / static_cast<float>(remapperLevels.size()));
         SetProgressValue(progress);
     }

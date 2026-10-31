@@ -31,6 +31,7 @@ extern "C" __attribute__((visibility("default"))) void late_load() noexcept {
     BSML::Init();
     BSML::Register::RegisterSettingsMenu("BeatSync", DidActivate, false);
     BSML::Register::RegisterMainMenu("BeatSync Settings", "BeatSync", "Opens BeatSync Settings", DidActivate);
+    EnsureLogoPathOnLateLoad();
     TriggerAutomaticPullOnLateLoad();
     logger.info("Completed load!");
 }

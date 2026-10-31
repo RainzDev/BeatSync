@@ -4,3 +4,4 @@
 
 void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToHierarchy, bool screenSystemEnabling);
 void TriggerAutomaticPullOnLateLoad();
+void EnsureLogoPathOnLateLoad();
