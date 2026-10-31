@@ -6,7 +6,7 @@
   "author": "Jess",
   "packageId": "com.beatgames.beatsaber",
   "packageVersion": "1.40.8_7379",
-  "description": "Ports PC beatmaps over to Quest",
+  "description": "Syncs beatmaps from PC over to Quest",
   "dependencies": [
     {
       "version": "*",

@@ -1,6 +1,6 @@
 # BeatSync
 
-Ports PC beatmaps over to Quest
+Syncs beatmaps from PC over to Quest
 
 ## Requirements
 
