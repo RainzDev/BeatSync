@@ -4,7 +4,7 @@ Ports PC beatmaps over to Quest
 
 ## Requirements
 
-You must download the application [here](https://github.com/RainzDev/BeatSyncApplication/releases/tag/v0.1.4) and run it after. After that, configure the settings in the application.
+You must download the application [here](https://github.com/RainzDev/BeatSyncApplication/releases/tag/v0.1.4) and run it after. After that, configure the settings in the application and mod settings. 
 
 ## Building
 
