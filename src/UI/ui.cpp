@@ -10,7 +10,9 @@
 #include "playlistcore/shared/PlaylistCore.hpp"
 
 #include <filesystem>
+#include <atomic>
 #include <fstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -20,9 +22,24 @@
 
 #include <cstdlib>
 
-static bool g_isPullingBeatmaps = false;
+static std::atomic_bool g_isPullingBeatmaps = false;
 static UnityEngine::UI::Button* g_pullBeatmapsButton = nullptr;
 static BSML::SliderSetting* g_pullProgressBar = nullptr;
+
+static void SetPullButtonState(bool isPulling);
+
+static void HandlePullFailureAndResetState(const std::string& reason) {
+    logger.error("Pull beatmaps failed: {}", reason);
+    SetPullButtonState(false);
+
+    BSML::MainThreadScheduler::Schedule([]() {
+        if (g_pullProgressBar) {
+            g_pullProgressBar->set_Value(0.0f);
+        }
+    });
+
+    g_isPullingBeatmaps.store(false);
+}
 
 static std::filesystem::path GetPrimaryLogoPath() {
     return std::filesystem::path("/sdcard/ModData/com.beatgames.beatsaber/Mods") / MOD_ID / "logo.png";
@@ -204,11 +221,9 @@ static void AddRemapperLevelsToPlaylistWithProgress() {
 }
 
 void PullBeatmapsButton(UnityEngine::UI::Button* button) {
-    if (g_isPullingBeatmaps) {
+    if (g_isPullingBeatmaps.exchange(true)) {
         return;
     }
-
-    g_isPullingBeatmaps = true;
 
     if (button) {
         button->set_interactable(false);
@@ -226,33 +241,57 @@ void PullBeatmapsButton(UnityEngine::UI::Button* button) {
             auto responseFuture = CreateRequest("/api/beatmaps/json");
             WebUtils::JsonResponse json = responseFuture.get();
 
-            const auto& source = json.GetParsedData()["version"]["source"].GetString();
+            const auto& parsedData = json.GetParsedData();
+            if (!parsedData.IsObject()) {
+                throw std::runtime_error("server response is not a JSON object");
+            }
+
+            if (!parsedData.HasMember("version") || !parsedData["version"].IsObject()) {
+                throw std::runtime_error("missing or invalid 'version' in server response");
+            }
+
+            const auto& version = parsedData["version"];
+            if (!version.HasMember("source") || !version["source"].IsString()) {
+                throw std::runtime_error("missing or invalid 'source' in server response");
+            }
+
+            if (!version.HasMember("customLevels") || !version["customLevels"].IsArray()) {
+                throw std::runtime_error("missing or invalid 'customLevels' in server response");
+            }
+
+            const auto& source = version["source"].GetString();
             const std::string sourceStr = source;
             const bool shouldSyncRemapperPlaylist = sourceStr == "RemapperOutput";
-            const auto& customLevels = json.GetParsedData()["version"]["customLevels"];
+            const auto& customLevels = version["customLevels"];
             const auto totalBeatmaps = customLevels.Size();
             int processedBeatmaps = 0;
 
             for (auto& beatmap : customLevels.GetArray()) {
-                auto bytes = DownloadZipBytes(std::string("/api/beatmaps/download/") + beatmap["name"].GetString());
+                if (!beatmap.IsObject() || !beatmap.HasMember("name") || !beatmap["name"].IsString()) {
+                    logger.warn("Skipping beatmap entry with missing/invalid name field");
+                    continue;
+                }
+
+                const std::string beatmapName = beatmap["name"].GetString();
+                auto bytes = DownloadZipBytes(std::string("/api/beatmaps/download/") + beatmapName);
 
                 logger.info("Downloaded {} bytes", bytes.size());
 
                 if (sourceStr == "CustomLevels") {
-                    if (std::filesystem::exists(SongCore::API::Loading::GetPreferredCustomLevelPath() / beatmap["name"].GetString())) {
-                        std::filesystem::remove_all(SongCore::API::Loading::GetPreferredCustomLevelPath() / beatmap["name"].GetString());
+                    if (std::filesystem::exists(SongCore::API::Loading::GetPreferredCustomLevelPath() / beatmapName)) {
+                        std::filesystem::remove_all(SongCore::API::Loading::GetPreferredCustomLevelPath() / beatmapName);
                     }
-                    ExtractZip(bytes, SongCore::API::Loading::GetPreferredCustomLevelPath(), beatmap["name"].GetString());
+                    ExtractZip(bytes, SongCore::API::Loading::GetPreferredCustomLevelPath(), beatmapName);
                 } else if (sourceStr == "CustomWIPLevels") {
-                    if (std::filesystem::exists(SongCore::API::Loading::GetPreferredCustomWIPLevelPath() / beatmap["name"].GetString())) {
-                        std::filesystem::remove_all(SongCore::API::Loading::GetPreferredCustomWIPLevelPath() / beatmap["name"].GetString());
+                    if (std::filesystem::exists(SongCore::API::Loading::GetPreferredCustomWIPLevelPath() / beatmapName)) {
+                        std::filesystem::remove_all(SongCore::API::Loading::GetPreferredCustomWIPLevelPath() / beatmapName);
                     }
-                    ExtractZip(bytes, SongCore::API::Loading::GetPreferredCustomWIPLevelPath(), beatmap["name"].GetString());
+                    ExtractZip(bytes, SongCore::API::Loading::GetPreferredCustomWIPLevelPath(), beatmapName);
                 } else if (sourceStr == "RemapperOutput") {
-                    if (std::filesystem::exists(SongCore::API::Loading::GetPreferredCustomWIPLevelPath() / (beatmap["name"].GetString() + std::string("_Remapper")))) {
-                        std::filesystem::remove_all(SongCore::API::Loading::GetPreferredCustomWIPLevelPath() / (beatmap["name"].GetString() + std::string("_Remapper")));
+                    if (std::filesystem::exists(SongCore::API::Loading::GetPreferredCustomWIPLevelPath() / (beatmapName + std::string("_Remapper")))) {
+                        std::filesystem::remove_all(SongCore::API::Loading::GetPreferredCustomWIPLevelPath() / (beatmapName + std::string("_Remapper")));
                     }
-                    ExtractZip(bytes, SongCore::API::Loading::GetPreferredCustomWIPLevelPath(), beatmap["name"].GetString() + std::string("_Remapper"));
+                    ExtractZip(bytes, SongCore::API::Loading::GetPreferredCustomWIPLevelPath(), beatmapName + std::string("_Remapper"));
                 }
 
                 ++processedBeatmaps;
@@ -280,29 +319,11 @@ void PullBeatmapsButton(UnityEngine::UI::Button* button) {
                 }
             });
 
-            g_isPullingBeatmaps = false;
+            g_isPullingBeatmaps.store(false);
         } catch (const std::exception& ex) {
-            logger.error("Pull beatmaps failed: {}", ex.what());
-            SetPullButtonState(false);
-
-            BSML::MainThreadScheduler::Schedule([]() {
-                if (g_pullProgressBar) {
-                    g_pullProgressBar->set_Value(0.0f);
-                }
-            });
-
-            g_isPullingBeatmaps = false;
+            HandlePullFailureAndResetState(ex.what());
         } catch (...) {
-            logger.error("Pull beatmaps failed with unknown exception");
-            SetPullButtonState(false);
-
-            BSML::MainThreadScheduler::Schedule([]() {
-                if (g_pullProgressBar) {
-                    g_pullProgressBar->set_Value(0.0f);
-                }
-            });
-
-            g_isPullingBeatmaps = false;
+            HandlePullFailureAndResetState("unknown exception");
         }
     }).detach();
 }
@@ -350,14 +371,14 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
     }
 
     g_pullBeatmapsButton = BSML::Lite::CreateUIButton(container, "Pull Beatmaps", []() {
-        if (g_isPullingBeatmaps) {
+        if (g_isPullingBeatmaps.load()) {
             return;
         }
 
         PullBeatmapsButton(g_pullBeatmapsButton);
     });
 
-    if (g_isPullingBeatmaps) {
+    if (g_isPullingBeatmaps.load()) {
         g_pullBeatmapsButton->set_interactable(false);
         BSML::Lite::SetButtonText(g_pullBeatmapsButton, "Pulling...");
     }

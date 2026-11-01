@@ -7,13 +7,7 @@
   "packageId": "com.beatgames.beatsaber",
   "packageVersion": "1.45.3_30054",
   "description": "Syncs beatmaps from PC over to Quest",
-  "dependencies": [
-    {
-      "version": "*",
-      "id": "playlistmanager",
-      "downloadIfMissing": "https://github.com/Metalit/PlaylistManager/releases/download/v1.4.1/PlaylistManager.qmod"
-    }
-  ],
+  "dependencies": [],
   "modFiles": [],
   "lateModFiles": [],
   "libraryFiles": [],
