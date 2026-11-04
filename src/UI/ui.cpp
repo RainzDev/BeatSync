@@ -9,8 +9,11 @@
 
 #include "playlistcore/shared/PlaylistCore.hpp"
 
+#include "mdns_cpp/mdns.hpp"
+
 #include <filesystem>
 #include <atomic>
+#include <algorithm>
 #include <fstream>
 #include <stdexcept>
 #include <string>
@@ -25,11 +28,182 @@
 static std::atomic_bool g_isPullingBeatmaps = false;
 static UnityEngine::UI::Button* g_pullBeatmapsButton = nullptr;
 static BSML::SliderSetting* g_pullProgressBar = nullptr;
+static BSML::CustomListTableData* g_hostList = nullptr;
+static UnityEngine::UI::Button* g_refreshHostButton = nullptr;
+static UnityEngine::UI::Button* g_connectHostButton = nullptr;
+static HMUI::CurvedTextMeshPro* g_hostStatusText = nullptr;
+static std::string g_selectedHost;
+static std::string g_selectedPort;
+static std::atomic_bool g_isRefreshingHosts = false;
 
 static void SetPullButtonState(bool isPulling);
+static void SetHostSelectionState();
+
+static std::string FormatHostDisplayName(const std::string& host) {
+    if (host.empty()) {
+        return "Unknown Host";
+    }
+
+    return host;
+}
+
+static void ClearHostSelectionState() {
+    g_selectedHost.clear();
+    g_selectedPort.clear();
+    if (g_hostList && g_hostList->tableView) {
+        g_hostList->tableView->ClearSelection();
+    }
+    SetHostSelectionState();
+}
+
+static bool IsDigitsOnly(const std::string& value) {
+    return !value.empty() && std::all_of(value.begin(), value.end(), [](unsigned char c) {
+        return c >= '0' && c <= '9';
+    });
+}
+
+static std::pair<std::string, std::string> ExtractHostAndPortFromDisplay(const std::string& displayText) {
+    const auto openParen = displayText.rfind('(');
+    const auto closeParen = displayText.rfind(')');
+
+    if (openParen != std::string::npos && closeParen != std::string::npos && closeParen > openParen) {
+        std::string endpoint = displayText.substr(openParen + 1, closeParen - openParen - 1);
+        const auto colon = endpoint.rfind(':');
+        if (colon != std::string::npos) {
+            const std::string host = endpoint.substr(0, colon);
+            const std::string port = endpoint.substr(colon + 1);
+            if (!host.empty() && IsDigitsOnly(port)) {
+                return {host, port};
+            }
+        }
+
+        return {endpoint, ""};
+    }
+
+    return {displayText, ""};
+}
+
+static void UpdateHostStatusText(const std::string& text) {
+    BSML::MainThreadScheduler::Schedule([text]() {
+        if (g_hostStatusText) {
+            g_hostStatusText->set_text(StringW(text));
+        }
+    });
+}
+
+static void RefreshHostList() {
+    if (!g_hostList) {
+        return;
+    }
+
+    g_isRefreshingHosts.store(true);
+    UpdateHostStatusText("Scanning for hosts...");
+
+    if (g_refreshHostButton) {
+        g_refreshHostButton->set_interactable(false);
+    }
+
+    ClearHostSelectionState();
+    if (g_connectHostButton) {
+        g_connectHostButton->set_interactable(false);
+    }
+
+    BSML::MainThreadScheduler::Schedule([]() {
+        if (!g_hostList) {
+            return;
+        }
+
+        if (g_hostList->tableView) {
+            g_hostList->tableView->ClearSelection();
+        }
+
+        g_hostList->data.clear();
+        if (g_hostList->tableView) {
+            g_hostList->tableView->ReloadData();
+        }
+        ClearHostSelectionState();
+    });
+
+    std::thread([]() {
+        std::vector<std::string> discoveredHosts;
+
+        auto addHost = [&](const std::string& host) {
+            if (host.empty()) {
+                return;
+            }
+
+            if (std::find(discoveredHosts.begin(), discoveredHosts.end(), host) == discoveredHosts.end()) {
+                discoveredHosts.push_back(host);
+            }
+        };
+
+        try {
+            mdns_cpp::mDNS mdns;
+            const auto resolvedHosts = mdns.executeQueryAndGetHosts("_http._tcp.local.");
+            for (const auto& host : resolvedHosts) {
+                addHost(host);
+            }
+        } catch (const std::exception& ex) {
+            logger.warn("mDNS host refresh failed: {}", ex.what());
+        } catch (...) {
+            logger.warn("mDNS host refresh failed with an unknown exception");
+        }
+
+        if (discoveredHosts.empty()) {
+            UpdateHostStatusText("No hosts found");
+        }
+
+        BSML::MainThreadScheduler::Schedule([discoveredHosts]() {
+            g_isRefreshingHosts.store(false);
+            if (g_refreshHostButton) {
+                g_refreshHostButton->set_interactable(true);
+            }
+
+            if (!g_hostList) {
+                return;
+            }
+
+            g_hostList->data.clear();
+            for (const auto& host : discoveredHosts) {
+                g_hostList->data.push_back(BSML::CustomCellInfo::construct(FormatHostDisplayName(host)));
+            }
+
+            if (g_hostList->tableView) {
+                g_hostList->tableView->ClearSelection();
+                g_hostList->tableView->ReloadData();
+            }
+
+            ClearHostSelectionState();
+            if (g_hostList && !g_hostList->data.empty()) {
+                UpdateHostStatusText("Select a host to connect");
+            } else {
+                UpdateHostStatusText("No hosts found");
+            }
+        });
+    }).detach();
+}
+
+static void SetHostSelectionState() {
+    if (!g_connectHostButton) {
+        return;
+    }
+
+    g_connectHostButton->set_interactable(!g_selectedHost.empty());
+
+    if (g_hostStatusText) {
+        if (g_selectedHost.empty()) {
+            g_hostStatusText->set_text(StringW(g_isRefreshingHosts.load() ? "Scanning for hosts..." : "Select a host to connect"));
+        } else {
+            const std::string selectedLabel = g_selectedPort.empty()
+                ? ("Selected: " + g_selectedHost)
+                : ("Selected: " + g_selectedHost + ":" + g_selectedPort);
+            g_hostStatusText->set_text(StringW(selectedLabel));
+        }
+    }
+}
 
 static void HandlePullFailureAndResetState(const std::string& reason) {
-    logger.error("Pull beatmaps failed: {}", reason);
+    logger.info("Pull beatmaps failed: {}", reason);
     SetPullButtonState(false);
 
     BSML::MainThreadScheduler::Schedule([]() {
@@ -105,9 +279,9 @@ void EnsureLogoPathOnLateLoad() {
 
         logger.info("Created fallback logo at '{}'", primaryLogoPath.string());
     } catch (const std::exception& ex) {
-        logger.error("EnsureLogoPathOnLateLoad failed: {}", ex.what());
+        logger.info("EnsureLogoPathOnLateLoad failed: {}", ex.what());
     } catch (...) {
-        logger.error("EnsureLogoPathOnLateLoad failed with unknown exception");
+        logger.info("EnsureLogoPathOnLateLoad failed with unknown exception");
     }
 }
 
@@ -184,7 +358,7 @@ static void AddRemapperLevelsToPlaylistWithProgress() {
     }
 
     if (!playlist) {
-        logger.error("Unable to resolve Remapper Output playlist");
+        logger.info("Unable to resolve Remapper Output playlist");
         return;
     }
 
@@ -210,9 +384,9 @@ static void AddRemapperLevelsToPlaylistWithProgress() {
         try {
             PlaylistCore::AddSongToPlaylist(playlist, remapperLevel);
         } catch (const std::exception& ex) {
-            logger.error("Failed adding remapper level to playlist: {}", ex.what());
+            logger.info("Failed adding remapper level to playlist: {}", ex.what());
         } catch (...) {
-            logger.error("Failed adding remapper level to playlist with unknown exception");
+            logger.info("Failed adding remapper level to playlist with unknown exception");
         }
 
         const float progress = 90.0f + (10.0f * static_cast<float>(i + 1) / static_cast<float>(remapperLevels.size()));
@@ -344,13 +518,63 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
 
     auto container = BSML::Lite::CreateScrollableSettingsContainer(self);
 
-    BSML::Lite::CreateStringSetting(container, "IP Address", getConfig().IPAddress.GetValue(), [](std::string value) {
-        getConfig().IPAddress.SetValue(value);
+    g_hostStatusText = BSML::Lite::CreateText(container, StringW("Select a host to connect"), TMPro::FontStyles::Normal, 3.5f, {0.0f, -2.0f}, {35.0f, 4.0f});
+
+    g_hostList = BSML::Lite::CreateScrollableList(container, {0.0f, 0.0f}, {60.0f, 50.0f}, [](int idx) {
+        if (!g_hostList || idx < 0 || idx >= g_hostList->data.size()) {
+            ClearHostSelectionState();
+            return;
+        }
+
+        auto* cell = g_hostList->data[idx];
+        if (!cell || !cell->text) {
+            ClearHostSelectionState();
+            return;
+        }
+
+        const auto selectedEndpoint = ExtractHostAndPortFromDisplay(std::string(cell->text));
+        g_selectedHost = selectedEndpoint.first;
+        g_selectedPort = selectedEndpoint.second;
+        SetHostSelectionState();
     });
 
-    BSML::Lite::CreateStringSetting(container, "Port", getConfig().Port.GetValue(), [](std::string value) {
-        getConfig().Port.SetValue(value);
+    g_refreshHostButton = BSML::Lite::CreateUIButton(container, "Refresh Hosts", []() {
+        RefreshHostList();
     });
+
+    g_connectHostButton = BSML::Lite::CreateUIButton(container, "Connect", []() {
+        if (g_selectedHost.empty()) {
+            logger.info("No host selected");
+            return;
+        }
+
+        if (g_connectHostButton->GetComponentInChildren<TMPro::TextMeshProUGUI*>()->get_text() == "Connect") {
+            BSML::Lite::SetButtonText(g_connectHostButton, "Connecting...");
+            g_connectHostButton->set_interactable(false);
+        } else {
+            getConfig().Port.SetValue("");
+            getConfig().IPAddress.SetValue("");
+            BSML::Lite::SetButtonText(g_connectHostButton, "Connect");
+            return;
+        }
+
+        if (!g_selectedPort.empty()) {
+            getConfig().Port.SetValue(g_selectedPort);
+        }
+
+        if (!CheckServerHealth(g_selectedHost)) {
+            logger.info("Selected host '{}' did not respond successfully to /health on port '{}'", g_selectedHost, getConfig().Port.GetValue());
+            BSML::Lite::SetButtonText(g_connectHostButton, "Connect");
+            g_connectHostButton->set_interactable(true);
+            return;
+        }
+
+        getConfig().IPAddress.SetValue(g_selectedHost);
+
+        BSML::Lite::SetButtonText(g_connectHostButton, "Disconnect");
+    });
+
+    RefreshHostList();
 
     g_pullProgressBar = BSML::Lite::CreateSliderSetting(
         container,
