@@ -39,6 +39,7 @@ jobs:
       - name: Build & Create QMOD
         run: |
           cd ${GITHUB_WORKSPACE}
+          rm -rf build
           qpm qmod zip
 
       - name: Get Output Names
