@@ -51,9 +51,9 @@ include(FetchContent)
 set(MDNS_CPP_BUILD_EXAMPLE OFF CACHE BOOL "Disable mdns_cpp example builds" FORCE)
 FetchContent_Declare(
     mdns_cpp
-    # Use an immutable archive to keep CI/local dependency resolution identical.
-    URL "https://github.com/gocarlos/mdns_cpp/archive/05b181ca2b3920b787287a291fae326ecd0ef019.tar.gz"
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    GIT_REPOSITORY "https://github.com/gocarlos/mdns_cpp.git"
+    GIT_TAG master
+    GIT_SHALLOW TRUE
 )
 
 FetchContent_MakeAvailable(mdns_cpp)
