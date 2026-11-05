@@ -53,7 +53,9 @@ FetchContent_Declare(
     mdns_cpp
     # Use an immutable archive to keep CI/local dependency resolution identical.
     URL "https://github.com/gocarlos/mdns_cpp/archive/05b181ca2b3920b787287a291fae326ecd0ef019.tar.gz"
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
+
 FetchContent_MakeAvailable(mdns_cpp)
 
 # Backward-compat patch for projects that call legacy mdns_cpp helpers.
@@ -64,9 +66,9 @@ set(MDNS_CPP_SOURCE_PATH "${mdns_cpp_SOURCE_DIR}/src/mdns.cpp")
 if(EXISTS "${MDNS_CPP_HEADER_PATH}" AND EXISTS "${MDNS_CPP_SOURCE_PATH}")
     file(READ "${MDNS_CPP_HEADER_PATH}" MDNS_CPP_HEADER_CONTENT)
 
-    if(NOT MDNS_CPP_HEADER_CONTENT MATCHES "executeQueryAndGetHosts")
+    if(NOT MDNS_CPP_HEADER_CONTENT MATCHES "BEATSYNC_MDNS_COMPAT_PATCH")
         string(REPLACE "#include <thread>"
-                       "#include <thread>\n#include <vector>"
+                       "#include <thread>\n#include <vector>\n// BEATSYNC_MDNS_COMPAT_PATCH"
                        MDNS_CPP_HEADER_CONTENT
                        "${MDNS_CPP_HEADER_CONTENT}")
 
@@ -80,9 +82,9 @@ if(EXISTS "${MDNS_CPP_HEADER_PATH}" AND EXISTS "${MDNS_CPP_SOURCE_PATH}")
 
     file(READ "${MDNS_CPP_SOURCE_PATH}" MDNS_CPP_SOURCE_CONTENT)
 
-    if(NOT MDNS_CPP_SOURCE_CONTENT MATCHES "getLastDiscoveredHosts\(\) const")
+    if(NOT MDNS_CPP_SOURCE_CONTENT MATCHES "BEATSYNC_MDNS_COMPAT_PATCH")
         string(REPLACE "#include <thread>"
-                       "#include <thread>\n#include <algorithm>\n#include <vector>"
+                       "#include <thread>\n#include <algorithm>\n#include <vector>\n// BEATSYNC_MDNS_COMPAT_PATCH"
                        MDNS_CPP_SOURCE_CONTENT
                        "${MDNS_CPP_SOURCE_CONTENT}")
 
