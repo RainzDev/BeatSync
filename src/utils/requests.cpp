@@ -40,9 +40,13 @@ std::future<WebUtils::JsonResponse> CreateRequest(std::string const& endpoint) {
     return WebUtils::GetAsync<WebUtils::JsonResponse>(path);
 }
 
-std::future<WebUtils::StringResponse> CreateStringRequest(std::string const& endpoint, std::string const& hostOverride) {
+std::future<WebUtils::StringResponse> CreateStringRequest(
+    std::string const& endpoint,
+    std::string const& hostOverride,
+    std::string const& portOverride
+) {
     const std::string host = hostOverride.empty() ? getConfig().IPAddress.GetValue() : hostOverride;
-    const std::string port = getConfig().Port.GetValue();
+    const std::string port = portOverride.empty() ? getConfig().Port.GetValue() : portOverride;
     const std::string URL = "http://" + host + ":" + port + UrlEncode(endpoint);
 
     WebUtils::URLOptions path{ URL };
@@ -51,8 +55,8 @@ std::future<WebUtils::StringResponse> CreateStringRequest(std::string const& end
     return WebUtils::GetAsync<WebUtils::StringResponse>(path);
 }
 
-bool CheckServerHealth(std::string const& hostOverride) {
-    auto response = CreateStringRequest("/health", hostOverride).get();
+bool CheckServerHealth(std::string const& hostOverride, std::string const& portOverride) {
+    auto response = CreateStringRequest("/health", hostOverride, portOverride).get();
     return response && response.get_HttpCode() == 200;
 }
 

@@ -19,6 +19,10 @@
 #include <string>
 #include <thread>
 
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <sys/socket.h>
+
 #include "main.hpp"
 
 #include "../assets/logo_bytes.inc"
@@ -35,16 +39,68 @@ static HMUI::CurvedTextMeshPro* g_hostStatusText = nullptr;
 static std::string g_selectedHost;
 static std::string g_selectedPort;
 static std::atomic_bool g_isRefreshingHosts = false;
+static std::atomic_bool g_isConnectingHost = false;
 
 static void SetPullButtonState(bool isPulling);
 static void SetHostSelectionState();
+
+static std::string ResolveHostnameFromIp(const std::string& ip) {
+    if (ip.empty()) {
+        return "";
+    }
+
+    char hostBuffer[NI_MAXHOST] = {};
+
+    sockaddr_in addr4{};
+    addr4.sin_family = AF_INET;
+    if (inet_pton(AF_INET, ip.c_str(), &addr4.sin_addr) == 1) {
+        const int status = getnameinfo(
+            reinterpret_cast<const sockaddr*>(&addr4),
+            sizeof(addr4),
+            hostBuffer,
+            sizeof(hostBuffer),
+            nullptr,
+            0,
+            NI_NAMEREQD
+        );
+
+        if (status == 0) {
+            return hostBuffer;
+        }
+    }
+
+    sockaddr_in6 addr6{};
+    addr6.sin6_family = AF_INET6;
+    if (inet_pton(AF_INET6, ip.c_str(), &addr6.sin6_addr) == 1) {
+        const int status = getnameinfo(
+            reinterpret_cast<const sockaddr*>(&addr6),
+            sizeof(addr6),
+            hostBuffer,
+            sizeof(hostBuffer),
+            nullptr,
+            0,
+            NI_NAMEREQD
+        );
+
+        if (status == 0) {
+            return hostBuffer;
+        }
+    }
+
+    return "";
+}
 
 static std::string FormatHostDisplayName(const std::string& host) {
     if (host.empty()) {
         return "Unknown Host";
     }
 
-    return host;
+    const std::string resolvedHostname = ResolveHostnameFromIp(host);
+    if (resolvedHostname.empty() || resolvedHostname == host) {
+        return host;
+    }
+
+    return resolvedHostname + " (" + host + ")";
 }
 
 static void ClearHostSelectionState() {
@@ -549,30 +605,56 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
         }
 
         if (g_connectHostButton->GetComponentInChildren<TMPro::TextMeshProUGUI*>()->get_text() == "Connect") {
+            if (g_isConnectingHost.exchange(true)) {
+                return;
+            }
+
+            const std::string hostToConnect = g_selectedHost;
+            const std::string portToConnect = g_selectedPort.empty() ? getConfig().Port.GetValue() : g_selectedPort;
+
             BSML::Lite::SetButtonText(g_connectHostButton, "Connecting...");
             g_connectHostButton->set_interactable(false);
+
+            std::thread([hostToConnect, portToConnect]() {
+                bool isHealthy = false;
+
+                try {
+                    isHealthy = CheckServerHealth(hostToConnect, portToConnect);
+                } catch (const std::exception& ex) {
+                    logger.info("Health check failed for '{}' on port '{}': {}", hostToConnect, portToConnect, ex.what());
+                } catch (...) {
+                    logger.info("Health check failed for '{}' on port '{}' with unknown exception", hostToConnect, portToConnect);
+                }
+
+                BSML::MainThreadScheduler::Schedule([hostToConnect, portToConnect, isHealthy]() {
+                    if (!g_connectHostButton) {
+                        g_isConnectingHost.store(false);
+                        return;
+                    }
+
+                    if (!isHealthy) {
+                        logger.info("Selected host '{}' did not respond successfully to /health on port '{}'", hostToConnect, portToConnect);
+                        BSML::Lite::SetButtonText(g_connectHostButton, "Connect");
+                        g_connectHostButton->set_interactable(true);
+                        g_isConnectingHost.store(false);
+                        return;
+                    }
+
+                    getConfig().Port.SetValue(portToConnect);
+                    getConfig().IPAddress.SetValue(hostToConnect);
+
+                    BSML::Lite::SetButtonText(g_connectHostButton, "Disconnect");
+                    g_connectHostButton->set_interactable(true);
+                    g_isConnectingHost.store(false);
+                });
+            }).detach();
         } else {
             getConfig().Port.SetValue("");
             getConfig().IPAddress.SetValue("");
             BSML::Lite::SetButtonText(g_connectHostButton, "Connect");
-            return;
-        }
-
-        if (!g_selectedPort.empty()) {
-            getConfig().Port.SetValue(g_selectedPort);
-        }
-
-        if (!CheckServerHealth(g_selectedHost)) {
-            logger.info("Selected host '{}' did not respond successfully to /health on port '{}'", g_selectedHost, getConfig().Port.GetValue());
-            BSML::Lite::SetButtonText(g_connectHostButton, "Connect");
             g_connectHostButton->set_interactable(true);
-            return;
+            g_isConnectingHost.store(false);
         }
-
-        getConfig().IPAddress.SetValue(g_selectedHost);
-
-        BSML::Lite::SetButtonText(g_connectHostButton, "Disconnect");
-        g_connectHostButton->set_interactable(true);
     });
 
     RefreshHostList();
