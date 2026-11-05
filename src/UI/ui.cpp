@@ -572,6 +572,7 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
         getConfig().IPAddress.SetValue(g_selectedHost);
 
         BSML::Lite::SetButtonText(g_connectHostButton, "Disconnect");
+        g_connectHostButton->set_interactable(true);
     });
 
     RefreshHostList();
