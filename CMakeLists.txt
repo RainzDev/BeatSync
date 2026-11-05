@@ -56,6 +56,60 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(mdns_cpp)
 
+# Backward-compat patch for projects that call legacy mdns_cpp helpers.
+# This edits the fetched dependency source in the build directory at configure-time.
+set(MDNS_CPP_HEADER_PATH "${mdns_cpp_SOURCE_DIR}/include/mdns_cpp/mdns.hpp")
+set(MDNS_CPP_SOURCE_PATH "${mdns_cpp_SOURCE_DIR}/src/mdns.cpp")
+
+if(EXISTS "${MDNS_CPP_HEADER_PATH}" AND EXISTS "${MDNS_CPP_SOURCE_PATH}")
+    file(READ "${MDNS_CPP_HEADER_PATH}" MDNS_CPP_HEADER_CONTENT)
+
+    if(NOT MDNS_CPP_HEADER_CONTENT MATCHES "executeQueryAndGetHosts")
+        string(REPLACE "#include <thread>"
+                       "#include <thread>\n#include <vector>"
+                       MDNS_CPP_HEADER_CONTENT
+                       "${MDNS_CPP_HEADER_CONTENT}")
+
+        string(REPLACE "  void executeQuery(const std::string &service);\n  void executeDiscovery();"
+                       "  void executeQuery(const std::string &service);\n  std::vector<std::string> executeQueryAndGetHosts(const std::string &service);\n  const std::vector<std::string>& getLastDiscoveredHosts() const;\n  void executeDiscovery();"
+                       MDNS_CPP_HEADER_CONTENT
+                       "${MDNS_CPP_HEADER_CONTENT}")
+
+        file(WRITE "${MDNS_CPP_HEADER_PATH}" "${MDNS_CPP_HEADER_CONTENT}")
+    endif()
+
+    file(READ "${MDNS_CPP_SOURCE_PATH}" MDNS_CPP_SOURCE_CONTENT)
+
+    if(NOT MDNS_CPP_SOURCE_CONTENT MATCHES "getLastDiscoveredHosts\(\) const")
+        string(REPLACE "#include <thread>"
+                       "#include <thread>\n#include <algorithm>\n#include <vector>"
+                       MDNS_CPP_SOURCE_CONTENT
+                       "${MDNS_CPP_SOURCE_CONTENT}")
+
+        string(REPLACE "namespace mdns_cpp {"
+                       "namespace mdns_cpp {\nnamespace {\nstd::vector<std::string> g_last_discovered_hosts;\n}"
+                       MDNS_CPP_SOURCE_CONTENT
+                       "${MDNS_CPP_SOURCE_CONTENT}")
+
+        string(REPLACE "void mDNS::executeQuery(const std::string &service) {"
+                       "void mDNS::executeQuery(const std::string &service) {\n  g_last_discovered_hosts.clear();"
+                       MDNS_CPP_SOURCE_CONTENT
+                       "${MDNS_CPP_SOURCE_CONTENT}")
+
+        string(REPLACE "  } else if (rtype == MDNS_RECORDTYPE_A) {\n    struct sockaddr_in addr;\n    mdns_record_parse_a(data, size, record_offset, record_length, &addr);\n    const auto addrstr = ipv4AddressToString(namebuffer, sizeof(namebuffer), &addr, sizeof(addr));\n    snprintf(str_buffer, str_capacity,\"%s : %s %.*s A %s\\n\", fromaddrstr.data(), entrytype, MDNS_STRING_FORMAT(entrystr), addrstr.data());"
+                       "  } else if (rtype == MDNS_RECORDTYPE_A) {\n    struct sockaddr_in addr;\n    mdns_record_parse_a(data, size, record_offset, record_length, &addr);\n    const auto addrstr = ipv4AddressToString(namebuffer, sizeof(namebuffer), &addr, sizeof(addr));\n    if (!addrstr.empty() && std::find(g_last_discovered_hosts.begin(), g_last_discovered_hosts.end(), addrstr) == g_last_discovered_hosts.end()) {\n      g_last_discovered_hosts.push_back(addrstr);\n    }\n    snprintf(str_buffer, str_capacity,\"%s : %s %.*s A %s\\n\", fromaddrstr.data(), entrytype, MDNS_STRING_FORMAT(entrystr), addrstr.data());"
+                       MDNS_CPP_SOURCE_CONTENT
+                       "${MDNS_CPP_SOURCE_CONTENT}")
+
+        string(REPLACE "void mDNS::executeDiscovery() {"
+                       "std::vector<std::string> mDNS::executeQueryAndGetHosts(const std::string &service) {\n  executeQuery(service);\n  return g_last_discovered_hosts;\n}\n\nconst std::vector<std::string> &mDNS::getLastDiscoveredHosts() const {\n  return g_last_discovered_hosts;\n}\n\nvoid mDNS::executeDiscovery() {"
+                       MDNS_CPP_SOURCE_CONTENT
+                       "${MDNS_CPP_SOURCE_CONTENT}")
+
+        file(WRITE "${MDNS_CPP_SOURCE_PATH}" "${MDNS_CPP_SOURCE_CONTENT}")
+    endif()
+endif()
+
 # Add files used in beatsaber-hook's hooking library
 recurse_files(inline_hook_c ${EXTERN_DIR}/includes/beatsaber-hook/shared/inline-hook/*.c)
 recurse_files(inline_hook_cpp ${EXTERN_DIR}/includes/beatsaber-hook/shared/inline-hook/*.cpp)
