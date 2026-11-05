@@ -40,6 +40,7 @@ static std::string g_selectedHost;
 static std::string g_selectedPort;
 static std::atomic_bool g_isRefreshingHosts = false;
 static std::atomic_bool g_isConnectingHost = false;
+static constexpr const char* kDefaultServerPort = "5050";
 
 static void SetPullButtonState(bool isPulling);
 static void SetHostSelectionState();
@@ -118,25 +119,79 @@ static bool IsDigitsOnly(const std::string& value) {
     });
 }
 
-static std::pair<std::string, std::string> ExtractHostAndPortFromDisplay(const std::string& displayText) {
-    const auto openParen = displayText.rfind('(');
-    const auto closeParen = displayText.rfind(')');
-
-    if (openParen != std::string::npos && closeParen != std::string::npos && closeParen > openParen) {
-        std::string endpoint = displayText.substr(openParen + 1, closeParen - openParen - 1);
-        const auto colon = endpoint.rfind(':');
-        if (colon != std::string::npos) {
-            const std::string host = endpoint.substr(0, colon);
-            const std::string port = endpoint.substr(colon + 1);
-            if (!host.empty() && IsDigitsOnly(port)) {
-                return {host, port};
-            }
-        }
-
-        return {endpoint, ""};
+static std::string TrimCopy(const std::string& value) {
+    const auto begin = value.find_first_not_of(" \t\n\r");
+    if (begin == std::string::npos) {
+        return "";
     }
 
-    return {displayText, ""};
+    const auto end = value.find_last_not_of(" \t\n\r");
+    return value.substr(begin, end - begin + 1);
+}
+
+static bool IsValidPortNumber(const std::string& value) {
+    if (!IsDigitsOnly(value) || value.size() > 5) {
+        return false;
+    }
+
+    unsigned int port = 0;
+    for (const char c : value) {
+        port = (port * 10U) + static_cast<unsigned int>(c - '0');
+        if (port > 65535U) {
+            return false;
+        }
+    }
+
+    return port > 0U;
+}
+
+static std::pair<std::string, std::string> ExtractHostAndPortFromDisplay(const std::string& displayText) {
+    const std::string normalizedDisplay = TrimCopy(displayText);
+    if (normalizedDisplay.empty()) {
+        return {"", ""};
+    }
+
+    std::string endpoint = normalizedDisplay;
+    const auto openParen = normalizedDisplay.rfind('(');
+    const auto closeParen = normalizedDisplay.rfind(')');
+    if (openParen != std::string::npos && closeParen == (normalizedDisplay.size() - 1) && closeParen > openParen) {
+        endpoint = TrimCopy(normalizedDisplay.substr(openParen + 1, closeParen - openParen - 1));
+    }
+
+    if (endpoint.empty()) {
+        return {"", ""};
+    }
+
+    if (endpoint.front() == '[') {
+        const auto closeBracket = endpoint.find(']');
+        if (closeBracket == std::string::npos) {
+            return {endpoint, ""};
+        }
+
+        const std::string host = endpoint.substr(0, closeBracket + 1);
+        if (closeBracket + 1 >= endpoint.size() || endpoint[closeBracket + 1] != ':') {
+            return {host, ""};
+        }
+
+        const std::string port = TrimCopy(endpoint.substr(closeBracket + 2));
+        if (IsValidPortNumber(port)) {
+            return {host, port};
+        }
+
+        return {host, ""};
+    }
+
+    const auto colonCount = static_cast<size_t>(std::count(endpoint.begin(), endpoint.end(), ':'));
+    if (colonCount == 1) {
+        const auto colon = endpoint.rfind(':');
+        const std::string host = TrimCopy(endpoint.substr(0, colon));
+        const std::string port = TrimCopy(endpoint.substr(colon + 1));
+        if (!host.empty() && IsValidPortNumber(port)) {
+            return {host, port};
+        }
+    }
+
+    return {endpoint, ""};
 }
 
 static void UpdateHostStatusText(const std::string& text) {
@@ -610,7 +665,13 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
             }
 
             const std::string hostToConnect = g_selectedHost;
-            const std::string portToConnect = g_selectedPort.empty() ? getConfig().Port.GetValue() : g_selectedPort;
+            std::string portToConnect = g_selectedPort;
+            if (portToConnect.empty()) {
+                portToConnect = getConfig().Port.GetValue();
+            }
+            if (portToConnect.empty()) {
+                portToConnect = kDefaultServerPort;
+            }
 
             BSML::Lite::SetButtonText(g_connectHostButton, "Connecting...");
             g_connectHostButton->set_interactable(false);
@@ -649,7 +710,6 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
                 });
             }).detach();
         } else {
-            getConfig().Port.SetValue("");
             getConfig().IPAddress.SetValue("");
             BSML::Lite::SetButtonText(g_connectHostButton, "Connect");
             g_connectHostButton->set_interactable(true);
