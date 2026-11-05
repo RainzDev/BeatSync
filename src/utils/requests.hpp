@@ -10,11 +10,19 @@
 #include <vector>
 
 std::string UrlEncode(std::string_view value);
-std::future<WebUtils::JsonResponse> CreateRequest(std::string const& endpoint);
+std::future<WebUtils::JsonResponse> CreateRequest(
+    std::string const& endpoint,
+    std::string const& hostOverride = "",
+    std::string const& portOverride = ""
+);
 std::future<WebUtils::StringResponse> CreateStringRequest(
-	std::string const& endpoint,
-	std::string const& hostOverride = "",
-	std::string const& portOverride = ""
+    std::string const& endpoint,
+    std::string const& hostOverride = "",
+    std::string const& portOverride = ""
 );
 bool CheckServerHealth(std::string const& hostOverride = "", std::string const& portOverride = "");
-std::vector<uint8_t> DownloadZipBytes(std::string const& endpoint);
+std::vector<uint8_t> DownloadZipBytes(
+    std::string const& endpoint,
+    std::string const& hostOverride = "",
+    std::string const& portOverride = ""
+);

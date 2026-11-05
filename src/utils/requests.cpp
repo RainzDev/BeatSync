@@ -29,10 +29,14 @@ std::string UrlEncode(std::string_view value) {
     return escaped.str();
 }
 
-std::future<WebUtils::JsonResponse> CreateRequest(std::string const& endpoint) {
-    const std::string getIp = getConfig().IPAddress.GetValue();
-    const std::string getPort = getConfig().Port.GetValue();
-    const std::string URL = "http://" + getIp + ":" + getPort + UrlEncode(endpoint);
+std::future<WebUtils::JsonResponse> CreateRequest(
+    std::string const& endpoint,
+    std::string const& hostOverride,
+    std::string const& portOverride
+) {
+    const std::string host = hostOverride.empty() ? getConfig().IPAddress.GetValue() : hostOverride;
+    const std::string port = portOverride.empty() ? getConfig().Port.GetValue() : portOverride;
+    const std::string URL = "http://" + host + ":" + port + UrlEncode(endpoint);
 
     WebUtils::URLOptions path{ URL };
     path.noEscape = true;
@@ -60,10 +64,14 @@ bool CheckServerHealth(std::string const& hostOverride, std::string const& portO
     return response && response.get_HttpCode() == 200;
 }
 
-std::vector<uint8_t> DownloadZipBytes(std::string const& endpoint) {
-    const std::string ip = getConfig().IPAddress.GetValue();
-    const std::string port = getConfig().Port.GetValue();
-    const std::string url = "http://" + ip + ":" + port + UrlEncode(endpoint);
+std::vector<uint8_t> DownloadZipBytes(
+    std::string const& endpoint,
+    std::string const& hostOverride,
+    std::string const& portOverride
+) {
+    const std::string host = hostOverride.empty() ? getConfig().IPAddress.GetValue() : hostOverride;
+    const std::string port = portOverride.empty() ? getConfig().Port.GetValue() : portOverride;
+    const std::string url = "http://" + host + ":" + port + UrlEncode(endpoint);
 
     WebUtils::URLOptions path{ url };
     path.noEscape = true;

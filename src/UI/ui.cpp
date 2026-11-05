@@ -523,7 +523,9 @@ void PullBeatmapsButton(UnityEngine::UI::Button* button) {
 
     std::thread([]() {
         try {
-            auto responseFuture = CreateRequest("/api/beatmaps/json");
+            const std::string host = getConfig().IPAddress.GetValue();
+            const std::string port = getConfig().Port.GetValue();
+            auto responseFuture = CreateRequest("/api/beatmaps/json", host, port);
             WebUtils::JsonResponse json = responseFuture.get();
 
             const auto& parsedData = json.GetParsedData();
@@ -558,7 +560,11 @@ void PullBeatmapsButton(UnityEngine::UI::Button* button) {
                 }
 
                 const std::string beatmapName = beatmap["name"].GetString();
-                auto bytes = DownloadZipBytes(std::string("/api/beatmaps/download/") + beatmapName);
+                auto bytes = DownloadZipBytes(
+                    std::string("/api/beatmaps/download/") + beatmapName,
+                    getConfig().IPAddress.GetValue(),
+                    getConfig().Port.GetValue()
+                );
 
                 logger.info("Downloaded {} bytes", bytes.size());
 
@@ -711,6 +717,7 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
             }).detach();
         } else {
             getConfig().IPAddress.SetValue("");
+            getConfig().Port.SetValue("");
             BSML::Lite::SetButtonText(g_connectHostButton, "Connect");
             g_connectHostButton->set_interactable(true);
             g_isConnectingHost.store(false);
