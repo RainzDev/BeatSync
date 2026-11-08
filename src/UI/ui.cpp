@@ -738,10 +738,19 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
         {0, 0},
         nullptr
     );
-    
-    auto progressBarRectTransform = g_pullProgressBar->get_gameObject()->GetComponent<UnityEngine::RectTransform*>();
 
-    progressBarRectTransform->set_offsetMax({progressBarRectTransform->get_offsetMax().x, 25.0f});
+    auto progressBarRectTransform = g_pullProgressBar->get_gameObject()->GetComponent<UnityEngine::RectTransform*>();
+    if (progressBarRectTransform) {
+        auto maxOffset = progressBarRectTransform->get_offsetMax();
+        maxOffset.y = 25.0f;
+        progressBarRectTransform->set_offsetMax(maxOffset);
+
+        auto handleProgressBar = g_pullProgressBar->slider->get_handleRect();
+        
+        if (handleProgressBar) {
+            handleProgressBar->get_gameObject()->SetActive(false);
+        }
+    }
 
     if (g_pullProgressBar) {
         g_pullProgressBar->set_interactable(false);
@@ -756,10 +765,6 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
         PullBeatmapsButton(g_pullBeatmapsButton);
     });
 
-    auto beatmapsButtonRectTransform = g_pullBeatmapsButton->get_gameObject()->GetComponent<UnityEngine::RectTransform*>();
-
-    beatmapsButtonRectTransform->set_offsetMax({beatmapsButtonRectTransform->get_offsetMax().x, 25.0f});
-
     if (g_isPullingBeatmaps.load()) {
         g_pullBeatmapsButton->set_interactable(false);
         BSML::Lite::SetButtonText(g_pullBeatmapsButton, "Pulling...");
@@ -768,8 +773,4 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
     auto automaticPullToggle = BSML::Lite::CreateToggle(container, "Automatic Pull", getConfig().AutomaticPull.GetValue(), [](bool value) {
         getConfig().AutomaticPull.SetValue(value);
     });
-
-    auto toggleRectTransform = automaticPullToggle->get_gameObject()->GetComponent<UnityEngine::RectTransform*>();
-
-    toggleRectTransform->set_offsetMax({toggleRectTransform->get_offsetMax().x, 25.0f});
 }
