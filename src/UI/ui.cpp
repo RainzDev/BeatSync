@@ -32,6 +32,9 @@
 static std::atomic_bool g_isPullingBeatmaps = false;
 static UnityEngine::UI::Button* g_pullBeatmapsButton = nullptr;
 static BSML::SliderSetting* g_pullProgressBar = nullptr;
+static UnityEngine::RectTransform* g_pullProgressFillRect = nullptr;
+static float g_pullProgressFillBaseWidth = 0.0f;
+static UnityEngine::Vector2 g_pullProgressFillBaseOffsetMax = {0.0f, 0.0f};
 static BSML::CustomListTableData* g_hostList = nullptr;
 static UnityEngine::UI::Button* g_refreshHostButton = nullptr;
 static UnityEngine::UI::Button* g_connectHostButton = nullptr;
@@ -44,6 +47,69 @@ static constexpr const char* kDefaultServerPort = "5050";
 
 static void SetPullButtonState(bool isPulling);
 static void SetHostSelectionState();
+static void SetProgressValue(float progress);
+
+static void EnsurePullProgressFill() {
+    if (!g_pullProgressBar || !g_pullProgressBar->slider || g_pullProgressFillRect) {
+        return;
+    }
+
+    auto* slider = g_pullProgressBar->slider;
+    auto sliderTransform = slider->get_transform();
+    if (!sliderTransform) {
+        logger.warn("Unable to resolve BSML slider transform while creating pull progress fill");
+        return;
+    }
+
+    auto bgTransform = sliderTransform->Find("BG");
+    if (!bgTransform) {
+        auto sliderSettingTransform = g_pullProgressBar->get_transform();
+        if (sliderSettingTransform) {
+            auto bsmlSliderTransform = sliderSettingTransform->Find("BSMLSlider");
+            if (bsmlSliderTransform) {
+                bgTransform = bsmlSliderTransform->Find("BG");
+            }
+        }
+    }
+
+    if (!bgTransform) {
+        logger.warn("Unable to find BSMLSlider/BG while creating pull progress fill");
+        return;
+    }
+
+    auto clonedBgObject = UnityEngine::Object::Instantiate(
+        reinterpret_cast<UnityEngine::Object*>(bgTransform.ptr()),
+        bgTransform->get_parent(),
+        false
+    );
+
+    auto* clonedBgRect = clonedBgObject ? reinterpret_cast<UnityEngine::RectTransform*>(clonedBgObject.ptr()) : nullptr;
+    if (!clonedBgRect) {
+        logger.warn("Unable to clone BG transform for pull progress fill");
+        return;
+    }
+
+    clonedBgRect->set_name("BeatSyncProgressFillBG");
+
+    auto* clonedBgImage = clonedBgRect->GetComponent<UnityEngine::UI::Image*>();
+    if (clonedBgImage) {
+        clonedBgImage->set_color({1.0f, 1.0f, 1.0f, 1.0f});
+    }
+
+    const float clonedBgWidth = clonedBgRect->get_rect().get_width();
+    if (clonedBgWidth <= 0.0f) {
+        logger.warn("Cloned BG width is invalid; progress fill may not render correctly");
+    }
+
+    g_pullProgressFillRect = clonedBgRect;
+    g_pullProgressFillBaseWidth = clonedBgWidth;
+    g_pullProgressFillBaseOffsetMax = clonedBgRect->get_offsetMax();
+
+    if (!g_pullProgressFillRect) {
+        logger.warn("Unable to create pull progress fill visual; slider fill will not render");
+        return;
+    }
+}
 
 static std::string ResolveHostnameFromIp(const std::string& ip) {
     if (ip.empty()) {
@@ -317,11 +383,7 @@ static void HandlePullFailureAndResetState(const std::string& reason) {
     logger.info("Pull beatmaps failed: {}", reason);
     SetPullButtonState(false);
 
-    BSML::MainThreadScheduler::Schedule([]() {
-        if (g_pullProgressBar) {
-            g_pullProgressBar->set_Value(0.0f);
-        }
-    });
+    SetProgressValue(0.0f);
 
     g_isPullingBeatmaps.store(false);
 }
@@ -437,6 +499,13 @@ static void SetProgressValue(float progress) {
         if (g_pullProgressBar) {
             g_pullProgressBar->set_Value(progress);
         }
+
+        if (g_pullProgressFillRect) {
+            const float normalizedProgress = std::clamp(progress / 100.0f, 0.0f, 1.0f);
+            auto offsetMax = g_pullProgressFillBaseOffsetMax;
+            offsetMax.x = g_pullProgressFillBaseOffsetMax.x - (g_pullProgressFillBaseWidth * (1.0f - normalizedProgress));
+            g_pullProgressFillRect->set_offsetMax(offsetMax);
+        }
     });
 }
 
@@ -517,9 +586,7 @@ void PullBeatmapsButton(UnityEngine::UI::Button* button) {
         SetPullButtonState(true);
     }
 
-    if (g_pullProgressBar) {
-        g_pullProgressBar->set_Value(0.0f);
-    }
+    SetProgressValue(0.0f);
 
     std::thread([]() {
         try {
@@ -739,6 +806,8 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
         nullptr
     );
 
+    EnsurePullProgressFill();
+
     auto progressBarRectTransform = g_pullProgressBar->get_gameObject()->GetComponent<UnityEngine::RectTransform*>();
     if (progressBarRectTransform) {
         auto maxOffset = progressBarRectTransform->get_offsetMax();
@@ -746,15 +815,22 @@ void DidActivate(HMUI::ViewController* self, bool firstActivation, bool addedToH
         progressBarRectTransform->set_offsetMax(maxOffset);
 
         auto handleProgressBar = g_pullProgressBar->slider->get_handleRect();
+
+        auto valueText = g_pullProgressBar->transform->Find("BSMLSlider/SlidingArea/Value");
         
         if (handleProgressBar) {
             handleProgressBar->get_gameObject()->SetActive(false);
         }
+
+        if (valueText) {
+            valueText->get_gameObject()->SetActive(false);
+        }
+
     }
 
     if (g_pullProgressBar) {
         g_pullProgressBar->set_interactable(false);
-        g_pullProgressBar->set_Value(0.0f);
+        SetProgressValue(0.0f);
     }
 
     g_pullBeatmapsButton = BSML::Lite::CreateUIButton(container, "Pull Beatmaps", []() {
